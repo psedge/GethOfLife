@@ -1,0 +1,7 @@
+eht.getBlock(0)
+eth.getBlock(0)
+eth.accounts
+eth.coinbase
+eth.accounts
+web3.fromWei(eth.getBalance(eth.accounts[0]), “ether”)
+eth.getBalance(eth.accounts[0])
