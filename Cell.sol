@@ -37,7 +37,7 @@ contract Cell {
 
         for (uint i=0; i < getNeighbourCount(); i++) {
             Cell c = Cell(neighbours[i]);
-            if (c.getState() == 0) {
+            if (c.getState() == 1) {
                 aliveNeighbours++;
             }
         }
