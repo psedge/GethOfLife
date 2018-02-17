@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Swarm of Life</title>
+    <title>GethOfLife</title>
     <meta title="description" content="A Game of Life simulation implemented on Ethereum Swarm."/>
 
     <script src="web3.min.js"></script>
@@ -10,19 +10,21 @@
             src="https://code.jquery.com/jquery-3.3.1.min.js"
             integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
             crossorigin="anonymous"></script>
+    <script src='http://ajax.googleapis.com/ajax/libs/jqueryui/1.11.0/jquery-ui.min.js'></script>
 
-    <script src="app.js"></script>
+
+        <!--<script src="app.js"></script>-->
 
     <style type="text/css">
         .grid { margin:1em auto; border-collapse:collapse }
         .grid td {
             cursor:pointer;
-            width: 20px; height:20px;
+            width: 30px; height: 30px;
             border:1px solid #ccc;
             text-align:center;
             font-family:sans-serif; font-size:13px
         }
-        .grid td.clicked {
+        .grid td.active {
             background-color: #0a0a0a;
             font-weight:bold; color:red;
         }
@@ -34,19 +36,19 @@
 </html>
 
 <script>
-    var lastClicked;
-    var grid = clickableGrid(5,5,function(el,row,col,i){
-        console.log("You clicked on element:",el);
-        console.log("You clicked on row:",row);
-        console.log("You clicked on col:",col);
-        console.log("You clicked on item #:",i);
+    var contracts = {};
 
-        changeState(50);
+    /**
+     * Toggle this cell.
+     * @param cell
+     */
+    function toggleCell(cell) {
+        if (cell.getAttribute('state') == '0') $(cell).switchClass('', 'active', 500);
+        if (cell.getAttribute('state') == '1') $(cell).switchClass('active', '', 500);
+        cell.setAttribute('state', cell.getAttribute('state') == '0' ? '1' : '0');
+    }
 
-        el.className='clicked';
-        if (lastClicked) lastClicked.className='';
-        lastClicked = el;
-    });
+    var grid = clickableGrid(19,39, toggleCell);
 
     document.body.appendChild(grid);
 
@@ -58,8 +60,13 @@
             var tr = grid.appendChild(document.createElement('tr'));
             for (var c=0;c<cols;++c){
                 var cell = tr.appendChild(document.createElement('td'));
-                cell.innerHTML = "";
-//            cell.innerHTML = ++i;
+
+                contracts[r + '**' + c] = cell;
+                if (contracts[r + '**' + c] !== void 0) {
+                    cell.setAttribute('address', r + '**' + c);
+                    cell.setAttribute('state', 0);
+                }
+
                 cell.addEventListener('click',(function(el,r,c,i){
                     return function(){
                         callback(el,r,c,i);
@@ -69,4 +76,21 @@
         }
         return grid;
     }
+
+    function setStateByAddress(address, state) {
+        var cell = document.querySelector('[address="'+address+'"]');
+        if (cell) {
+            cell.state = state;
+            if (state == 0) cell.className = '';
+            if (state == 1) cell.className = 'active';
+        }
+    }
+
+    setInterval(function() {
+        for (var cell in contracts){
+            if (Math.random() > 0.75) {
+                toggleCell(contracts[cell])
+            }
+        }
+    },2000);
 </script>
