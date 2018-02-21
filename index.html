@@ -16,6 +16,29 @@
         <!--<script src="app.js"></script>-->
 
     <style type="text/css">
+        body, html {
+            font-family: Arial, Helvetica, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+        h1, div {
+            display: block;
+            background-color: #fff;
+            position: absolute;
+            opacity: 0.8;
+            padding: 5px 15px;
+            /*border: 1px solid black;*/
+
+            -webkit-box-shadow: -2px 2px 31px -5px rgba(0,0,0,0.75);
+            -moz-box-shadow: -2px 2px 31px -5px rgba(0,0,0,0.75);
+            box-shadow: -2px 2px 31px -5px rgba(0,0,0,0.75);
+        }
+        h1 {
+            top: 20px;
+            left: 45px;
+            font-weight: bold;
+            font-size: 32pt;
+        }
         .grid { margin:1em auto; border-collapse:collapse }
         .grid td {
             cursor:pointer;
@@ -25,13 +48,13 @@
             font-family:sans-serif; font-size:13px
         }
         .grid td.active {
-            background-color: #0a0a0a;
+            background-color: rgba(55, 55, 55, 0.81);
             font-weight:bold; color:red;
         }
     </style>
 </head>
 <body>
-
+<h1>GethOfLife</h1>
 </body>
 </html>
 
@@ -88,7 +111,7 @@
 
     setInterval(function() {
         for (var cell in contracts){
-            if (Math.random() > 0.75) {
+            if (Math.random() > 0.9) {
                 toggleCell(contracts[cell])
             }
         }
