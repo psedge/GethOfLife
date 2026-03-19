@@ -3,117 +3,586 @@
 <head>
     <meta charset="UTF-8">
     <title>GethOfLife</title>
-    <meta title="description" content="A Game of Life simulation implemented on Ethereum Swarm."/>
-
-    <script src="web3.min.js"></script>
-    <script
-            src="https://code.jquery.com/jquery-3.3.1.min.js"
-            integrity="sha256-FgpCb/KJQlLNfOu91ta32o/NMZxltwRo8QtmkMRdAu8="
-            crossorigin="anonymous"></script>
-    <script src='http://ajax.googleapis.com/ajax/libs/jqueryui/1.11.0/jquery-ui.min.js'></script>
-
-
-        <!--<script src="app.js"></script>-->
-
-    <style type="text/css">
+    <meta name="description" content="Conway's Game of Life implemented on Ethereum."/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.2/ethers.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; }
         body, html {
             font-family: Arial, Helvetica, sans-serif;
-            margin: 0;
-            padding: 0;
+            margin: 0; padding: 0;
+            background: #f0f0f0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
-        h1, div {
-            display: block;
-            background-color: #fff;
-            position: absolute;
-            opacity: 0.8;
-            padding: 5px 15px;
-            /*border: 1px solid black;*/
+        header {
+            background: #fff;
+            width: 100%;
+            padding: 10px 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-shrink: 0;
+            z-index: 1;
+        }
+        h1 { margin: 0; font-size: 22pt; font-weight: bold; }
+        #controls { display: flex; gap: 8px; margin-left: auto; align-items: center; }
+        #status { font-size: 11px; color: #666; white-space: nowrap; }
+        button {
+            padding: 7px 16px; font-size: 13px;
+            border: none; border-radius: 4px;
+            cursor: pointer; background: #333; color: #fff;
+            transition: background 0.2s;
+        }
+        button:hover { background: #555; }
+        button:disabled { background: #aaa; cursor: default; }
+        #step-btn { background: #2a7d2a; }
+        #step-btn:hover:not(:disabled) { background: #3a9e3a; }
+        #auto-btn { background: #1a5fa8; }
+        #auto-btn:hover:not(:disabled) { background: #2472c4; }
+        #auto-btn.running { background: #a82a2a; }
+        #auto-btn.running:hover { background: #c43a3a; }
 
-            -webkit-box-shadow: -2px 2px 31px -5px rgba(0,0,0,0.75);
-            -moz-box-shadow: -2px 2px 31px -5px rgba(0,0,0,0.75);
-            box-shadow: -2px 2px 31px -5px rgba(0,0,0,0.75);
+        /* Main layout: grid left, log right */
+        .workspace {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
         }
-        h1 {
-            top: 20px;
-            left: 45px;
-            font-weight: bold;
-            font-size: 32pt;
+        .grid-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
         }
-        .grid { margin:1em auto; border-collapse:collapse }
+        .grid {
+            border-collapse: collapse;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
         .grid td {
-            cursor:pointer;
-            width: 30px; height: 30px;
-            border:1px solid #ccc;
-            text-align:center;
-            font-family:sans-serif; font-size:13px
+            cursor: pointer;
+            width: 50px; height: 50px;
+            border: 1px solid #ccc;
+            background: #fff;
+            transition: background 0.15s;
         }
-        .grid td.active {
-            background-color: rgba(55, 55, 55, 0.81);
-            font-weight:bold; color:red;
+        .grid td:hover { background: #e8e8e8; }
+        .grid td.active { background: #333; }
+        .grid td.active:hover { background: #555; }
+        .grid td.pending { opacity: 0.5; }
+
+        /* Activity log */
+        #log-panel {
+            width: 320px;
+            flex-shrink: 0;
+            background: #fff;
+            color: #333;
+            display: flex;
+            flex-direction: column;
+            font-size: 11px;
+            font-family: 'Courier New', monospace;
+            border-left: 1px solid #ddd;
+            box-shadow: -2px 0 8px rgba(0,0,0,0.05);
         }
+        #log-header {
+            padding: 8px 12px;
+            background: #f8f8f8;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-shrink: 0;
+        }
+        #log-header span { font-weight: bold; color: #333; font-size: 12px; }
+        #ops-display {
+            color: #2a7d2a;
+            font-size: 11px;
+            font-weight: bold;
+        }
+        #cost-display {
+            font-size: 11px;
+            color: #555;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            border-right: 1px solid #ddd;
+            padding-right: 12px;
+        }
+        #cost-display .cost-eth { font-weight: bold; color: #333; }
+        #cost-display .cost-usd { font-weight: bold; color: #c0392b; }
+        #cost-display .cost-meta { color: #999; font-size: 10px; }
+        #log-entries {
+            flex: 1;
+            overflow-y: auto;
+            padding: 4px 0;
+        }
+        .log-entry {
+            padding: 4px 12px;
+            border-bottom: 1px solid #f0f0f0;
+            line-height: 1.4;
+            animation: fadeIn 0.2s ease;
+        }
+        .log-entry:last-child { border-bottom: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; } }
+        .log-entry .ts { color: #aaa; margin-right: 6px; }
+        .log-entry.user  .label { color: #1a5fa8; }
+        .log-entry.tx    .label { color: #b07000; }
+        .log-entry.block .label { color: #2a7d2a; }
+        .log-entry.err   .label { color: #c0392b; }
+        .log-entry .detail { color: #999; font-size: 10px; margin-top: 1px; }
+
+        /* Overlay */
+        #overlay {
+            position: fixed; inset: 0;
+            background: rgba(0,0,0,0.55);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            color: #fff; font-size: 16px; z-index: 10;
+        }
+        #overlay.hidden { display: none; }
+        #overlay .spinner {
+            width: 36px; height: 36px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-bottom: 14px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-<h1>GethOfLife</h1>
-</body>
-</html>
+
+<div id="overlay">
+    <div class="spinner"></div>
+    <p id="overlay-msg">Connecting to local Hardhat node...</p>
+</div>
+
+<header>
+    <h1>GethOfLife</h1>
+    <div id="controls">
+        <div id="cost-display">
+            <span style="color:#888;font-size:10px">livenet $ eqv.</span>
+            <span class="cost-eth" id="cost-eth">0.000000 ETH</span>
+            <span class="cost-usd" id="cost-usd"></span>
+            <span class="cost-meta" id="cost-meta">fetching prices…</span>
+        </div>
+        <span id="status">Not connected</span>
+        <label style="font-size:12px;color:#666">Gens/tx (Speed)</label>
+        <select id="gens-select" style="font-size:13px;padding:5px 8px;border:1px solid #ccc;border-radius:4px">
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5" selected>5</option>
+        </select>
+        <button id="step-btn" onclick="doStep()" disabled>Step</button>
+        <button id="auto-btn" onclick="toggleAuto()" disabled>Auto</button>
+        <button id="rand-btn" onclick="randomiseGrid()" disabled>Randomise</button>
+        <button id="clear-btn" onclick="clearGrid()" disabled>Clear</button>
+    </div>
+</header>
+
+<div class="workspace">
+    <div class="grid-area">
+        <table class="grid" id="grid"></table>
+    </div>
+
+    <div id="log-panel">
+        <div id="log-header">
+            <span>Activity Log</span>
+            <span id="ops-display">— ops/s</span>
+        </div>
+        <div id="log-entries"></div>
+    </div>
+</div>
 
 <script>
-    var contracts = {};
+// ── Config ───────────────────────────────────────────────────────────────────
+const RPC_URL = "http://127.0.0.1:8545";
+// Hardhat account #0 private key — local dev only, never use in production
+const DEPLOYER_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80";
 
-    /**
-     * Toggle this cell.
-     * @param cell
-     */
-    function toggleCell(cell) {
-        if (cell.getAttribute('state') == '0') $(cell).switchClass('', 'active', 500);
-        if (cell.getAttribute('state') == '1') $(cell).switchClass('active', '', 500);
-        cell.setAttribute('state', cell.getAttribute('state') == '0' ? '1' : '0');
+const CELL_ABI = [
+    "function getState() view returns (uint)",
+    "function setState(uint newState)",
+];
+const GOL_ABI = [
+    "function step()",
+    "function stepN(uint8 n)",
+    "function getCells() view returns (address[])",
+];
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let provider, wallet, golContract, cellContracts = [], deployed;
+let autoRunning = false;   // true while auto-step loop is active
+let stepping = false;      // true while a step/clear/randomise tx is in flight
+const busyCells = new Set(); // cells visually pending (queued or in-flight)
+
+// Manual nonce tracking for step() — avoids Hardhat lag where getNonce()
+// returns the pre-mine value immediately after a block is confirmed.
+let stepNonce = null;
+async function acquireStepNonce() {
+    if (stepNonce === null) stepNonce = await wallet.getNonce("latest");
+    return stepNonce++;
+}
+function invalidateStepNonce() { stepNonce = null; }
+
+// Serial click queue — keeps nonces sequential without conflicts
+const clickQueue = [];
+let processingClicks = false;
+
+async function processClickQueue() {
+    if (processingClicks) return;
+    processingClicks = true;
+    while (clickQueue.length > 0) {
+        const { r, c, resolve, reject } = clickQueue.shift();
+        try {
+            const currentState = await cellContracts[r][c].getState();
+            const newState = currentState == 1n ? 0 : 1;
+            addLog("tx", "TX", `setState([${r},${c}]) → ${newState}`,
+                `contract ${deployed.cells[r][c].slice(0,10)}…`);
+            const tx = await cellContracts[r][c].setState(newState);
+            const receipt = await tx.wait();
+            recordOp();
+            addGas(receipt.gasUsed);
+            addLog("block", "MINED", `Block #${receipt.blockNumber}`,
+                `gas used: ${receipt.gasUsed.toString()} · tx ${receipt.hash.slice(0,10)}…`);
+            const s = await cellContracts[r][c].getState();
+            cellTd(r, c).className = s == 1n ? "active" : "";
+            resolve(receipt);
+        } catch (err) {
+            addLog("err", "ERR", err.message);
+            reject(err);
+        } finally {
+            cellTd(r, c).classList.remove("pending");
+            busyCells.delete(`${r},${c}`);
+        }
     }
+    processingClicks = false;
+}
 
-    var grid = clickableGrid(19,39, toggleCell);
+// Ops/s tracking
+let opTimestamps = [];   // timestamps of completed ops in the last window
+const OPS_WINDOW = 10000; // 10-second rolling window
 
-    document.body.appendChild(grid);
+// ── Logging ───────────────────────────────────────────────────────────────────
+function ts() {
+    const d = new Date();
+    return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+}
 
-    function clickableGrid( rows, cols, callback ){
-        var i=0;
-        var grid = document.createElement('table');
-        grid.className = 'grid';
-        for (var r=0;r<rows;++r){
-            var tr = grid.appendChild(document.createElement('tr'));
-            for (var c=0;c<cols;++c){
-                var cell = tr.appendChild(document.createElement('td'));
+function addLog(type, label, text, detail) {
+    const container = document.getElementById("log-entries");
+    const entry = document.createElement("div");
+    entry.className = "log-entry " + type;
+    entry.innerHTML =
+        `<span class="ts">${ts()}</span><span class="label">[${label}]</span> ${text}` +
+        (detail ? `<div class="detail">${detail}</div>` : "");
+    container.appendChild(entry);
+    // Keep last 200 entries
+    while (container.children.length > 200) container.removeChild(container.firstChild);
+    container.scrollTop = container.scrollHeight;
+}
 
-                contracts[r + '**' + c] = cell;
-                if (contracts[r + '**' + c] !== void 0) {
-                    cell.setAttribute('address', r + '**' + c);
-                    cell.setAttribute('state', 0);
-                }
+function recordOp() {
+    const now = Date.now();
+    opTimestamps.push(now);
+    // Prune old entries
+    opTimestamps = opTimestamps.filter(t => now - t < OPS_WINDOW);
+    const rate = (opTimestamps.length / (OPS_WINDOW / 1000)).toFixed(2);
+    document.getElementById("ops-display").textContent = rate + " ops/s";
+}
 
-                cell.addEventListener('click',(function(el,r,c,i){
-                    return function(){
-                        callback(el,r,c,i);
-                    }
-                })(cell,r,c,i),false);
+// ── Cost tracker ──────────────────────────────────────────────────────────────
+let totalGasUsed = 0n;
+let ethPriceUsd = null;      // USD per ETH
+let gasPriceGwei = null;     // current mainnet base fee in gwei
+
+async function fetchPrices() {
+    try {
+        // ETH/USD from CoinGecko (no key required)
+        const cgResp = await fetch(
+            "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd",
+            { cache: "no-store" }
+        );
+        if (cgResp.ok) {
+            const cg = await cgResp.json();
+            ethPriceUsd = cg?.ethereum?.usd ?? null;
+        }
+    } catch (_) {}
+
+    try {
+        // Mainnet gas price from the public Ethereum JSON-RPC (Cloudflare)
+        const gpResp = await fetch("https://cloudflare-eth.com", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ jsonrpc:"2.0", method:"eth_gasPrice", params:[], id:1 }),
+            cache: "no-store"
+        });
+        if (gpResp.ok) {
+            const gp = await gpResp.json();
+            if (gp.result) {
+                gasPriceGwei = Number(BigInt(gp.result)) / 1e9;
             }
         }
-        return grid;
-    }
+    } catch (_) {}
 
-    function setStateByAddress(address, state) {
-        var cell = document.querySelector('[address="'+address+'"]');
-        if (cell) {
-            cell.state = state;
-            if (state == 0) cell.className = '';
-            if (state == 1) cell.className = 'active';
+    updateCostDisplay();
+}
+
+function addGas(gasUsed) {
+    totalGasUsed += BigInt(gasUsed);
+    updateCostDisplay();
+}
+
+function updateCostDisplay() {
+    const gwei = gasPriceGwei ?? 10; // fall back to 10 gwei if fetch failed
+    const ethCost = Number(totalGasUsed) * gwei / 1e9;
+    document.getElementById("cost-eth").textContent = ethCost.toFixed(6) + " ETH";
+
+    if (ethPriceUsd !== null) {
+        const usd = ethCost * ethPriceUsd;
+        document.getElementById("cost-usd").textContent =
+            "≈ $" + (usd < 0.01 ? usd.toFixed(4) : usd.toFixed(2));
+        document.getElementById("cost-meta").textContent =
+            `@ ${gwei.toFixed(1)} gwei · ETH $${ethPriceUsd.toLocaleString()}`;
+    } else {
+        document.getElementById("cost-usd").textContent = "";
+        document.getElementById("cost-meta").textContent =
+            gasPriceGwei ? `@ ${gwei.toFixed(1)} gwei (no ETH price)` : "@ 10 gwei fallback";
+    }
+}
+
+// Fetch prices on load and refresh every 60s
+fetchPrices();
+setInterval(fetchPrices, 60000);
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+    try {
+        setOverlay("Loading deployed.json...");
+        const resp = await fetch("deployed.json");
+        if (!resp.ok) throw new Error("deployed.json not found — run 'npm run deploy' first");
+        deployed = await resp.json();
+
+        setOverlay("Connecting to Hardhat node...");
+        provider = new ethers.JsonRpcProvider(RPC_URL);
+        await provider.getNetwork();
+        wallet = new ethers.Wallet(DEPLOYER_KEY, provider);
+
+        golContract = new ethers.Contract(deployed.gameOfLife, GOL_ABI, wallet);
+        cellContracts = deployed.cells.map(row =>
+            row.map(addr => new ethers.Contract(addr, CELL_ABI, wallet))
+        );
+
+        buildGrid(deployed.rows, deployed.cols);
+
+        setOverlay("Reading cell states...");
+        await refreshGrid();
+
+        document.getElementById("status").textContent =
+            `Connected · ${deployed.gameOfLife.slice(0,10)}…`;
+        document.getElementById("step-btn").disabled = false;
+        document.getElementById("auto-btn").disabled = false;
+        document.getElementById("rand-btn").disabled = false;
+        document.getElementById("clear-btn").disabled = false;
+        hideOverlay();
+
+        const net = await provider.getNetwork();
+        addLog("block", "INIT", `Connected to chain ${net.chainId}`,
+            `GameOfLife @ ${deployed.gameOfLife}`);
+        addLog("block", "INIT", `${deployed.rows}×${deployed.cols} grid = ${deployed.rows * deployed.cols} Cell contracts`);
+    } catch (err) {
+        document.getElementById("overlay-msg").textContent = "Error: " + err.message;
+        document.querySelector("#overlay .spinner").style.display = "none";
+        addLog("err", "ERR", err.message);
+    }
+}
+
+// ── Grid ──────────────────────────────────────────────────────────────────────
+function buildGrid(rows, cols) {
+    const table = document.getElementById("grid");
+    table.innerHTML = "";
+    for (let r = 0; r < rows; r++) {
+        const tr = table.insertRow();
+        for (let c = 0; c < cols; c++) {
+            const td = tr.insertCell();
+            td.dataset.row = r;
+            td.dataset.col = c;
+            td.addEventListener("click", () => handleCellClick(r, c));
         }
     }
+}
 
-    setInterval(function() {
-        for (var cell in contracts){
-            if (Math.random() > 0.9) {
-                toggleCell(contracts[cell])
+function cellTd(r, c) {
+    return document.querySelector(`[data-row="${r}"][data-col="${c}"]`);
+}
+
+async function refreshGrid() {
+    const reads = [];
+    for (let r = 0; r < deployed.rows; r++)
+        for (let c = 0; c < deployed.cols; c++)
+            reads.push(cellContracts[r][c].getState().then(s => ({ r, c, s })));
+    const results = await Promise.all(reads);
+    const alive = [];
+    for (const { r, c, s } of results) {
+        cellTd(r, c).className = s == 1n ? "active" : "";
+        if (s == 1n) alive.push(`[${r},${c}]`);
+    }
+    return alive;
+}
+
+// ── User actions ──────────────────────────────────────────────────────────────
+async function handleCellClick(r, c) {
+    if (stepping || busyCells.has(`${r},${c}`)) return;
+    busyCells.add(`${r},${c}`);
+    cellTd(r, c).classList.add("pending");
+    addLog("user", "CLICK", `User clicked cell [${r},${c}]`);
+    // Enqueue — multiple cells can be queued simultaneously, processed in order
+    return new Promise((resolve, reject) => {
+        clickQueue.push({ r, c, resolve, reject });
+        processClickQueue();
+    });
+}
+
+async function doStep() {
+    if (stepping) return;
+    stepping = true;
+    setBusy(true);
+
+    const gens = parseInt(document.getElementById("gens-select").value, 10);
+    addLog("user", "STEP", `Step triggered (${gens} gen${gens > 1 ? "s" : ""}/tx)`);
+
+    try {
+        const nonce = await acquireStepNonce();
+        const fn = gens === 1 ? "step" : "stepN";
+        const args = gens === 1 ? { nonce } : [gens, { nonce }];
+        addLog("tx", "TX",
+            gens === 1 ? `GameOfLife.step()` : `GameOfLife.stepN(${gens})`,
+            `contract ${deployed.gameOfLife.slice(0,10)}… · nonce ${nonce}`);
+
+        const gasLimit = 15_000_000n;
+        const tx = gens === 1
+            ? await golContract.step({ nonce, gasLimit })
+            : await golContract.stepN(gens, { nonce, gasLimit });
+        const receipt = await tx.wait();
+
+        recordOp();
+        addGas(receipt.gasUsed);
+        addLog("block", "MINED", `Block #${receipt.blockNumber}`,
+            `gas used: ${receipt.gasUsed.toString()} · tx ${receipt.hash.slice(0,10)}…`);
+
+        const alive = await refreshGrid();
+        addLog("block", "STATE",
+            `${alive.length} cell${alive.length !== 1 ? "s" : ""} alive`,
+            alive.length ? alive.join(", ") : "—");
+    } catch (err) {
+        invalidateStepNonce();
+        addLog("err", "ERR", err.message);
+    } finally {
+        setBusy(false);
+        stepping = false;
+    }
+}
+
+async function bulkSetStates(values, logLabel, logMsg) {
+    // Wait for any queued cell clicks to finish so nonces are clean
+    while (processingClicks || clickQueue.length > 0)
+        await new Promise(r => setTimeout(r, 50));
+
+    // Pause automining: Hardhat won't accept future nonces while mining each tx
+    // instantly. With automining off, all txs queue up, then evm_mine batches them.
+    await provider.send("evm_setAutomine", [false]);
+    try {
+        const baseNonce = await wallet.getNonce("latest");
+        const sends = [];
+        let i = 0;
+        for (let r = 0; r < deployed.rows; r++)
+            for (let c = 0; c < deployed.cols; c++, i++)
+                sends.push(cellContracts[r][c].setState(values[i], { nonce: baseNonce + i }));
+        const txs = await Promise.all(sends);
+        await provider.send("evm_mine", []);   // mine all queued txs in one block
+        const receipts = await Promise.all(txs.map(tx => tx.wait()));
+        receipts.forEach(r => r && addGas(r.gasUsed));
+    } finally {
+        await provider.send("evm_setAutomine", [true]);
+    }
+    invalidateStepNonce(); // bulk op consumed 100 nonces; force re-fetch on next step
+    recordOp();
+    const alive = await refreshGrid();
+    addLog("block", logLabel, logMsg(alive));
+}
+
+async function clearGrid() {
+    if (stepping) return;
+    stepping = true;
+    setBusy(true);
+    addLog("user", "CLEAR", "Clearing all cells");
+    try {
+        const vals = Array(deployed.rows * deployed.cols).fill(0);
+        await bulkSetStates(vals, "CLEAR", () => "All cells cleared");
+    } catch (err) {
+        addLog("err", "ERR", err.message);
+    } finally {
+        setBusy(false);
+        stepping = false;
+    }
+}
+
+async function randomiseGrid() {
+    if (stepping) return;
+    stepping = true;
+    setBusy(true);
+    addLog("user", "RAND", "Randomising grid (~30% alive)");
+    try {
+        const vals = Array.from({ length: deployed.rows * deployed.cols },
+            () => Math.random() < 0.3 ? 1 : 0);
+        await bulkSetStates(vals, "RAND", alive => `${alive.length} cells alive`);
+    } catch (err) {
+        addLog("err", "ERR", err.message);
+    } finally {
+        setBusy(false);
+        stepping = false;
+    }
+}
+
+function toggleAuto() {
+    const btn = document.getElementById("auto-btn");
+    if (autoRunning) {
+        autoRunning = false;
+        btn.textContent = "Auto";
+        btn.classList.remove("running");
+        addLog("user", "AUTO", "Auto-step stopped");
+    } else {
+        autoRunning = true;
+        btn.textContent = "Stop";
+        btn.classList.add("running");
+        addLog("user", "AUTO", "Auto-step started (continuous)");
+        (async function loop() {
+            while (autoRunning) {
+                await doStep();
             }
-        }
-    },2000);
+        })();
+    }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function setOverlay(msg) {
+    document.getElementById("overlay").classList.remove("hidden");
+    document.getElementById("overlay-msg").textContent = msg;
+}
+function hideOverlay() { document.getElementById("overlay").classList.add("hidden"); }
+function setBusy(on) {
+    document.getElementById("step-btn").disabled = on;
+    document.getElementById("rand-btn").disabled = on;
+    document.getElementById("clear-btn").disabled = on;
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+init();
 </script>
+</body>
+</html>

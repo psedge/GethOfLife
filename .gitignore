@@ -12,3 +12,31 @@
 
 # Project-local glide cache, RE: https://github.com/Masterminds/glide/issues/736
 .glide/
+
+# Hardhat / Node
+node_modules/
+artifacts/
+cache/
+typechain-types/
+deployed.json
+
+# Legacy contract output
+*.abi
+*.addr
+
+# Environment variables
+.env
+.env.*
+
+# Hardhat coverage
+coverage/
+coverage.json
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
